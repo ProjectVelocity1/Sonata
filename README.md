@@ -1,5 +1,4 @@
-# we're working on it!
-the base fuctions working tho
+Branch for stable-ish stuff before merging with main branch
 
 How to run (for now)
 ```sh
