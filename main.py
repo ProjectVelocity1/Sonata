@@ -473,25 +473,23 @@ def load_songs():
         songs_list.append((folder, chart_name))
 
 def song_select_loop():
-    global selected_song_index, current_state, current_chart, bg_image
+    global selected_song_index, current_state, current_chart, bg_image, scroll_offset
 
     load_songs()
+    scroll_offset = 0
 
     while current_state == STATE_SONG_SELECT:
-
         screen.fill((10, 10, 10))
 
-    for i in range(scroll_offset, min(scroll_offset + max_visible, len(songs_list))):
+        # ==== DRAW SONGS ====
+        for i in range(scroll_offset, min(scroll_offset + max_visible, len(songs_list))):
+            folder, name = songs_list[i]
+            prefix = "> " if i == selected_song_index else ""
+            text = font.render(prefix + name, True, (107,33,255))
+            screen.blit(text, (100, 200 + (i - scroll_offset) * 40))
 
-        folder, name = songs_list[i]
-
-        prefix = "> " if i == selected_song_index else ""
-
-        text = font.render(prefix + name, True, (107,33,255))
-        screen.blit(text, (100, 200 + (i - scroll_offset) * 40))
-
+        # ==== HANDLE EVENTS ====
         for event in pygame.event.get():
-
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -501,27 +499,22 @@ def song_select_loop():
                     current_state = STATE_MENU
                     return
 
-                if event.key == pygame.K_UP:
-                    if selected_song_index > 0:
-                        selected_song_index -= 1
-                
-                        if selected_song_index >= scroll_offset:
-                            scroll_offset += 1
+                if event.key == pygame.K_UP and selected_song_index > 0:
+                    selected_song_index -= 1
+                    if selected_song_index < scroll_offset:
+                        scroll_offset -= 1
 
-                if event.key == pygame.K_DOWN:
-                    if selected_song_index < len(songs_list) - 1:
-                        selected_song_index += 1
+                if event.key == pygame.K_DOWN and selected_song_index < len(songs_list) - 1:
+                    selected_song_index += 1
+                    if selected_song_index >= scroll_offset + max_visible:
+                        scroll_offset += 1
 
-                        if selected_song_index >= scroll_offset + max_visible:
-                            scroll_offset -=1
-
-                if event.key == pygame.K_RETURN:
-
-                    selected_folder = songs_list[selected_song_index]
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    selected_folder = songs_list[selected_song_index][0]
 
                     chart_file = None
                     for file in selected_folder.glob("*"):
-                        if file.suffix in [".osu", ".qua", ".sm"]:
+                        if file.suffix.lower() in [".osu", ".qua", ".sm"]:
                             chart_file = file
                             break
 
@@ -535,7 +528,7 @@ def song_select_loop():
                             bg_image = pygame.transform.scale(bg_image, (WIDTH, HEIGHT))
                             break
 
-                    pygame.time.delay(3000)
+                    pygame.time.delay(200)  # small pause
                     current_state = STATE_GAMEPLAY
 
         pygame.display.flip()
@@ -610,7 +603,7 @@ def menu_loop():
                 if event.key == pygame.K_DOWN:
                     selected = (selected + 1) % len(menu)
 
-                if event.key == pygame.K_RETURN:
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
 
                     if menu[selected] == "Play":
                         current_state = STATE_SONG_SELECT
