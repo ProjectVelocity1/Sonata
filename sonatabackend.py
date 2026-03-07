@@ -837,58 +837,60 @@ def settings_loop():
 # ==============================
 diff_list = []
 selected_diff = 0
+scroll_offset = 0  # New variable for scrolling
+VISIBLE_COUNT = 10 # Number of songs visible at once
 
 def select_loop():
-
-    global current_state, selected_song, current_chart
+    global current_state, selected_song, current_chart, scroll_offset
 
     load_songs()
 
     while current_state == STATE_SELECT:
-
         screen.fill((10,10,10))
 
-        for i,(folder,name) in enumerate(songs_list):
+        # Adjust scroll offset to keep selected_song visible
+        if selected_song < scroll_offset:
+            scroll_offset = selected_song
+        elif selected_song >= scroll_offset + VISIBLE_COUNT:
+            scroll_offset = selected_song - VISIBLE_COUNT + 1
 
-            prefix="> " if i==selected_song else ""
-            text=font.render(prefix+name,True,(107,33,255))
-
-            screen.blit(text,(100,200+i*40))
+        # Draw only visible songs
+        for i in range(scroll_offset, min(scroll_offset + VISIBLE_COUNT, len(songs_list))):
+            folder, name = songs_list[i]
+            prefix = "> " if i == selected_song else ""
+            text = font.render(prefix + name, True, (107,33,255))
+            screen.blit(text, (100, 200 + (i - scroll_offset) * 40))
 
         for event in pygame.event.get():
-
-            if event.type==pygame.QUIT:
+            if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
 
-            if event.type==pygame.KEYDOWN:
-
-                if event.key==pygame.K_ESCAPE:
-                    current_state=STATE_MENU
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    current_state = STATE_MENU
                     return
 
-                if event.key==pygame.K_UP and selected_song>0:
-                    selected_song-=1
+                if event.key == pygame.K_UP and selected_song > 0:
+                    selected_song -= 1
 
-                if event.key==pygame.K_DOWN and selected_song<len(songs_list)-1:
-                    selected_song+=1
+                if event.key == pygame.K_DOWN and selected_song < len(songs_list) - 1:
+                    selected_song += 1
 
-                if event.key==pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-
-                    folder=songs_list[selected_song][0]
+                if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                    folder = songs_list[selected_song][0]
                     diff_list.clear()
-
                     for file in folder.glob("*"):
-                        if file.suffix.lower() in [".osu",".qua",".sm"]:
+                        if file.suffix.lower() in [".osu", ".qua", ".sm"]:
                             diff_list.append(file)
 
-                        if diff_list:
-                            selected_diff = 0
-                            current_state = STATE_DIFF_SELECT
-                            current_chart=load_chart(file)
-                            break
+                    if diff_list:
+                        selected_diff = 0
+                        current_state = STATE_DIFF_SELECT
+                        current_chart = load_chart(diff_list[0])
+                        break
 
-                    current_state=STATE_GAME
+                    current_state = STATE_GAME
 
         pygame.display.flip()
         clock.tick(60)
@@ -1110,6 +1112,7 @@ def game_loop():
 
         pygame.display.flip()
         clock.tick(120)
+
 score = 0
 combo = 0
 max_combo = 0
