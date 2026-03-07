@@ -696,7 +696,7 @@ def menu_loop():
                 if event.key == pygame.K_DOWN:
                     menu_index = (menu_index+1)%len(menu)
 
-                if event.key == pygame.K_RETURN:
+                if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
 
                     if menu[menu_index] == "Play":
                         current_state = STATE_SELECT
@@ -777,7 +777,7 @@ def settings_loop():
                     if settings_menu[settings_index]=="Offset":
                         settings["offset"]+=5
 
-                if event.key==pygame.K_RETURN:
+                if event.key==pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
 
                     if settings_menu[settings_index]=="Hitsound":
                         settings["hitsound"]=not settings["hitsound"]
@@ -830,7 +830,7 @@ def select_loop():
                 if event.key==pygame.K_DOWN and selected_song<len(songs_list)-1:
                     selected_song+=1
 
-                if event.key==pygame.K_RETURN:
+                if event.key==pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
 
                     folder=songs_list[selected_song][0]
                     diff_list.clear()
@@ -886,7 +886,7 @@ def diff_select_loop():
                 if event.key==pygame.K_DOWN and selected_diff<len(diff_list)-1:
                     selected_diff+=1
 
-                if event.key==pygame.K_RETURN:
+                if event.key==pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
 
                     chart_file=diff_list[selected_diff]
                     current_chart=load_chart(chart_file)
