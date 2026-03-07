@@ -7,6 +7,9 @@ if sys.platform.startswith("win"):
 elif sys.platform.startswith("linux"):
     import subprocess
     tk = None
+elif sys.platform.startswith("darwin"): # idk what to do with this yet
+    import subprocess
+    tk = None
 else:
     subprocess = None
     tk = None
@@ -53,28 +56,35 @@ ETTERNA_DIR = None
 # Song Source Detection
 # ==============================
 
-def ask_folder_path(game_title:str = "that unknown game idk about"):
-    dir = None
-    titel = "Please choose a folder path for " + game_title
-    if tk: # Windows
-            root = tk.Tk()
-            root.withdraw()
-            dir = tk.filedialog.askdirectory(
-                title=titel
-            )
-    elif subprocess: # Linux
-        try:
-            dir = subprocess.check_output(
-                ["kdialog", "--getexistingdirectory", ".", "--title", titel]
-            ).decode().strip()
-        except FileNotFoundError:
+def ask_folder_path(game_title: str = "that unknown game idk about") -> Path | None:
+    dir_path = None
+    dialog_title = f"Please choose a folder path for {game_title}"
+
+    # Windows (Tkinter)
+    if tk:
+        root = tk.Tk()
+        root.withdraw()
+        dir_path = Path(tk.filedialog.askdirectory(title=dialog_title))
+
+    # Linux (subprocess)
+    elif subprocess:
+        for cmd in [
+            ["kdialog", "--getexistingdirectory", ".", "--title", dialog_title], # KDE
+            ["flatpak-spawn", "--host", "kdialog", "--getexistingdirectory", ".", "--title", dialog_title], # KDE (if ran from Flatpak)
+            ["zenity", "--file-selection", "--directory", "--title", dialog_title] # Anything else (GTK)
+            #["xdg-open", "."]  # fallback, opens file manager but not interactive, idk if i'm keeping this
+        ]:
             try:
-                dir = subprocess.check_output(
-                    ["flatpak-spawn", "--host", "kdialog", "--getexistingdirectory", ".", "--title", titel]
-                ).decode().strip()
+                result = subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
+                if result:
+                    dir_path = Path(result)
+                break
+            except FileNotFoundError:
+                continue
             except subprocess.CalledProcessError:
-                pass
-    return Path(dir)
+                break
+
+    return dir_path
 
 def detect_song_sources():
 
@@ -1173,4 +1183,3 @@ if __name__=="__main__":
 
         if current_state==STATE_DIFF_SELECT:
             diff_select_loop()
-
