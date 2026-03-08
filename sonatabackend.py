@@ -696,7 +696,7 @@ pygame.init()
 WIDTH = 1000
 HEIGHT = 700
 
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
 pygame.display.set_caption("Sonata")
 
 font = pygame.font.SysFont("Arial", 32)
@@ -726,10 +726,11 @@ STATE_DIFF_SELECT = "diff_select"
 settings = {
     "scroll_speed":0.6,
     "offset":0,
-    "hitsound":True
+    "hitsound":True,
+    "bg_dim":0.5
 }
 
-settings_menu = ["Scroll Speed","Offset","Hitsound","Back"]
+settings_menu = ["Scroll Speed","Offset","Hitsound","Background Dim","Back"]
 settings_index = 0
 
 # ==============================
@@ -816,7 +817,7 @@ def menu_loop():
                         sys.exit()
 
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(180)
 
 def settings_loop():
 
@@ -833,13 +834,16 @@ def settings_loop():
             value=""
 
             if item=="Scroll Speed":
-                value=f": {settings['scroll_speed']}"
+                value=f": {settings['scroll_speed']:.2f}"
 
-            if item=="Offset":
+            elif item=="Offset":
                 value=f": {settings['offset']}"
 
-            if item=="Hitsound":
+            elif item=="Hitsound":
                 value=f": {'ON' if settings['hitsound'] else 'OFF'}"
+
+            elif item=="Background Dim":
+                value=f": {int(settings['bg_dim']*100)}%"
 
             text=font.render(prefix+item+value,True,(107,33,255))
             screen.blit(text,(100,200+i*50))
@@ -862,33 +866,41 @@ def settings_loop():
                 if event.key==pygame.K_DOWN:
                     settings_index=(settings_index+1)%len(settings_menu)
 
+                item=settings_menu[settings_index]
+
                 if event.key==pygame.K_LEFT:
 
-                    if settings_menu[settings_index]=="Scroll Speed":
+                    if item=="Scroll Speed":
                         settings["scroll_speed"]=max(0.2,settings["scroll_speed"]-0.1)
 
-                    if settings_menu[settings_index]=="Offset":
+                    elif item=="Offset":
                         settings["offset"]-=5
+
+                    elif item=="Background Dim":
+                        settings["bg_dim"]=max(0,settings["bg_dim"]-0.05)
 
                 if event.key==pygame.K_RIGHT:
 
-                    if settings_menu[settings_index]=="Scroll Speed":
-                        settings["scroll_speed"]+=0.1
+                    if item=="Scroll Speed":
+                        settings["scroll_speed"]=min(3.0,settings["scroll_speed"]+0.1)
 
-                    if settings_menu[settings_index]=="Offset":
+                    elif item=="Offset":
                         settings["offset"]+=5
 
-                if event.key==pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                    elif item=="Background Dim":
+                        settings["bg_dim"]=min(1,settings["bg_dim"]+0.05)
 
-                    if settings_menu[settings_index]=="Hitsound":
+                if event.key in [pygame.K_RETURN,pygame.K_KP_ENTER]:
+
+                    if item=="Hitsound":
                         settings["hitsound"]=not settings["hitsound"]
 
-                    if settings_menu[settings_index]=="Back":
+                    if item=="Back":
                         current_state=STATE_MENU
                         return
 
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(180)
 
 # ==============================
 # Song Select + Timewarp + Diff Select (Fixed Boot)
@@ -962,7 +974,7 @@ def select_loop():
                         current_state = STATE_DIFF_SELECT
 
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(180)
 
 def diff_select_loop():
     global current_state, selected_diff, current_chart
@@ -995,6 +1007,10 @@ def diff_select_loop():
                 if event.key == pygame.K_DOWN:
                     selected_diff = min(len(diff_list) - 1, selected_diff + 1)
                 if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
+                    if not diff_list:
+                        current_state = STATE_SELECT
+                        return
+                    selected_diff = max(0, min(selected_diff, len(diff_list)-1))    
                     current_chart = load_chart(diff_list[selected_diff])
                     if current_chart is None:
                         print("Error: chart failed to load!")
@@ -1003,7 +1019,7 @@ def diff_select_loop():
                     current_state = STATE_GAME
 
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(180)
        
 # ==============================
 # SPP Calculation 
@@ -1024,25 +1040,6 @@ def calculate_spp(score, accuracy, note_count, timewarp=1.0):
 
     return round(spp, 2)
 
-# ==============================
-# Gameplay (Circle Skin + Countdown + Timewarp)
-# ==============================
-import numpy as np
-import pygame.sndarray
-
-def load_audio_with_timewarp(file_path, timewarp):
-    """Load audio as pygame.Sound and apply timewarp correctly."""
-    sound = pygame.mixer.Sound(str(file_path))
-    arr = pygame.sndarray.array(sound).astype(np.float32)
-
-    # Resample array to match the timewarp correctly
-    indices = np.arange(0, len(arr), timewarp)
-    indices = indices[indices < len(arr)].astype(np.int32)
-    warped_arr = arr[indices]
-
-    warped_sound = pygame.sndarray.make_sound(warped_arr.astype(np.int16))
-    return warped_sound
-
 def game_loop():
     global score, combo, max_combo
     global marv, perf, great, good, miss
@@ -1053,7 +1050,6 @@ def game_loop():
 
     chart = current_chart
 
-    # ---- DISCORD RPC UPDATE ----
     try:
         update_rpc(
             "Playing",
@@ -1071,6 +1067,8 @@ def game_loop():
             audio_file = f
             break
 
+    audio_playing = None
+
     # load background
     bg = None
     if chart.bg:
@@ -1079,133 +1077,161 @@ def game_loop():
             bg = pygame.image.load(bg_path)
             bg = pygame.transform.scale(bg, (WIDTH, HEIGHT))
 
+    # cache images (faster)
+    note_img = SKIN_IMAGES.get("Note", DEFAULT_SKIN_IMAGES["Note"])
+    receptor_img = SKIN_IMAGES.get("Receptor", DEFAULT_SKIN_IMAGES["Receptor"])
+    hold_img = SKIN_IMAGES.get("Hold", DEFAULT_SKIN_IMAGES["Hold"])
+
     keys = [pygame.K_d, pygame.K_f, pygame.K_j, pygame.K_k]
+
     hit_windows = {"MARV":22,"PERFECT":45,"GREAT":90,"GOOD":135}
+
     judgement = ""
     hit_notes = set()
 
-    scroll_speed = settings["scroll_speed"]
+    scroll_speed = settings["scroll_speed"] * 600
 
-    # ------------------ 3-second countdown ------------------
-    countdown_start = pygame.time.get_ticks()
-    countdown_done = False
-    start_time = None
-    audio_playing = None
+    # detect first note
+    first_note = min([t for t,_ in chart.notes], default=0)
+
+    # start slightly early (note approach time)
+    start_time = time.perf_counter()*1000 + 150
+
+    if audio_file:
+        try:
+            audio_playing = load_audio_with_timewarp(audio_file, timewarp)
+            audio_playing.play()
+        except:
+            pass
 
     while current_state == STATE_GAME:
+
         screen.fill((0,0,0))
         if bg:
-            screen.blit(bg, (0,0))
+            screen.blit(bg,(0,0))
 
-        current_time = pygame.time.get_ticks() - countdown_start
+            dim = int(settings["bg_dim"]* 255)
 
-        # show countdown
-        if not countdown_done:
-            remaining = 3 - current_time // 1000
-            if remaining > 0:
-                text = font.render(f"{remaining}", True, (255,255,255))
-                screen.blit(text, (WIDTH//2-20, HEIGHT//2-20))
-                pygame.display.flip()
-                clock.tick(60)
-                continue
-            else:
-                countdown_done = True
-                # start music with correct timewarp
-                if audio_file:
-                    try:
-                        audio_playing = load_audio_with_timewarp(audio_file, timewarp)
-                        audio_playing.play()
-                    except Exception as e:
-                        print("Audio failed to load with timewarp:", e)
-                start_time = pygame.time.get_ticks()
-                continue
+            dim_surface = pygame.Surface((WIDTH,HEIGHT))
+            dim_surface.fill((0,0,0))
+            dim_surface.set_alpha(dim)
+            screen.blit(dim_surface,(0,0))
+        elapsed = (time.perf_counter()*1000 - start_time) * timewarp
 
-        # elapsed time for notes (map)
-        elapsed = (pygame.time.get_ticks() - start_time) * timewarp
-
-        # detect end of map
+        # end detection
         last_note = max([t for t,_ in chart.notes], default=0)
         last_ln = max([e for _,e,_ in chart.lns], default=0)
-        end_time = max(last_note, last_ln)
+        end_time = max(last_note,last_ln)
+
         update_rpc_gameplay(chart, elapsed, end_time)
+
         if elapsed > end_time + 3000:
             if audio_playing:
                 audio_playing.stop()
             current_state = STATE_RESULTS
             return
 
-        # draw receptors
+        # receptors
         for i in range(chart.keys):
-            receptor_img = SKIN_IMAGES.get("Receptor", DEFAULT_SKIN_IMAGES["Receptor"])
-            screen.blit(receptor_img, (200+i*80, HEIGHT-120))
+            screen.blit(receptor_img,(200+i*80,HEIGHT-120))
 
         # draw notes
-        for i,(time,col) in enumerate(chart.notes):
+        for i,(note_time,col) in enumerate(chart.notes):
+
             if i in hit_notes:
                 continue
-            y = HEIGHT-120-(time-elapsed)*scroll_speed
-            if y > HEIGHT:
+
+            y = HEIGHT - 120 - (note_time - elapsed) * scroll_speed / 1000
+
+            if y > HEIGHT + 100 or y < -100:
                 continue
-            note_img = SKIN_IMAGES.get("Note", DEFAULT_SKIN_IMAGES["Note"])
-            screen.blit(note_img, (200+col*80, y))
 
-            if elapsed - time > 150:
-                judgement = "MISS"
+            screen.blit(note_img,(200+col*80,y))
+
+            if elapsed - note_time > 150:
+                judgement="MISS"
                 hit_notes.add(i)
-                combo = 0
-                miss += 1
+                combo=0
+                miss+=1
 
-        # draw hold notes
+        # draw holds
         for start_ln,end_ln,col in chart.lns:
-            y1 = HEIGHT-120-(start_ln-elapsed)*scroll_speed
-            y2 = HEIGHT-120-(end_ln-elapsed)*scroll_speed
-            hold_img = SKIN_IMAGES.get("Hold", DEFAULT_SKIN_IMAGES["Hold"])
-            hold_scaled = pygame.transform.scale(hold_img, (60, max(1, int(y2-y1))))
-            screen.blit(hold_scaled, (200+col*80, y1))
 
-        # show judgement text
+            y1 = HEIGHT-120-(start_ln-elapsed)*scroll_speed/1000
+            y2 = HEIGHT-120-(end_ln-elapsed)*scroll_speed/1000
+
+            height=int(y2-y1)
+
+            if height<=0:
+                continue
+
+            if y1>HEIGHT or y2<-200:
+                continue
+
+            hold_scaled=pygame.transform.scale(hold_img,(60,height))
+            screen.blit(hold_scaled,(200+col*80,y1))
+
+        # judgement text
         if judgement:
-            text = font.render(judgement, True, (255,255,255))
-            screen.blit(text, (WIDTH//2-60, HEIGHT//2))
+            text=font.render(judgement,True,(255,255,255))
+            screen.blit(text,(WIDTH//2-60,HEIGHT//2))
 
         # input
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+
+            if event.type==pygame.QUIT:
                 if audio_playing:
                     audio_playing.stop()
                 pygame.quit()
                 sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+
+            if event.type==pygame.KEYDOWN:
+
+                if event.key==pygame.K_ESCAPE:
                     if audio_playing:
                         audio_playing.stop()
-                    current_state = STATE_SELECT
+                    current_state=STATE_SELECT
                     return
 
+                # SPACE skip to first note
+                if event.key==pygame.K_SPACE and elapsed < first_note:
+                    start_time = time.perf_counter()*1000 - first_note
+
                 for col,key in enumerate(keys):
-                    if event.key == key:
-                        for i,(time,ncol) in enumerate(chart.notes):
-                            if ncol != col or i in hit_notes:
+
+                    if event.key==key:
+
+                        for i,(note_time,ncol) in enumerate(chart.notes):
+
+                            if ncol!=col or i in hit_notes:
                                 continue
-                            diff = abs(elapsed - time)
+
+                            diff=abs(elapsed-note_time)
+
                             for j,w in hit_windows.items():
-                                if diff <= w:
-                                    judgement = j
+
+                                if diff<=w:
+
+                                    judgement=j
                                     hit_notes.add(i)
-                                    if j == "MARV":
-                                        score += 1000; marv += 1; combo += 1
-                                    elif j == "PERFECT":
-                                        score += 800; perf += 1; combo += 1
-                                    elif j == "GREAT":
-                                        score += 500; great += 1; combo += 1
-                                    elif j == "GOOD":
-                                        score += 200; good += 1; combo += 1
-                                    max_combo = max(max_combo, combo)
+
+                                    if j=="MARV":
+                                        score+=1000; marv+=1; combo+=1
+                                    elif j=="PERFECT":
+                                        score+=800; perf+=1; combo+=1
+                                    elif j=="GREAT":
+                                        score+=500; great+=1; combo+=1
+                                    elif j=="GOOD":
+                                        score+=200; good+=1; combo+=1
+
+                                    max_combo=max(max_combo,combo)
+
                                     break
+
                             break
 
         pygame.display.flip()
-        clock.tick(120)
+        clock.tick(180)
 
 # ==============================
 # Results Loop
@@ -1258,7 +1284,7 @@ def results_loop():
                     return
 
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(180)
 
 # ==============================
 # Boot
